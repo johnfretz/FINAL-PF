@@ -109,7 +109,12 @@ public static void addRental(int userId, Scanner sc, dbConnect con) {
         }
     }
 
-    double dailyRate = Double.parseDouble(con.fetchRecords("SELECT daily_rate FROM tbl_cars WHERE car_id = ?", carId).get(0).get("daily_rate").toString());
+    List<Map<String,Object>> rateResult = con.fetchRecords("SELECT daily_rate FROM tbl_cars WHERE car_id = ?", carId);
+    if (rateResult.isEmpty()) {
+        System.out.println("❌ Error: Could not retrieve car rate. Rental cancelled.");
+        return;
+    }
+    double dailyRate = Double.parseDouble(rateResult.get(0).get("daily_rate").toString());
     double totalCost = dailyRate * rentalDays;
 
     String rentalDate = new SimpleDateFormat("yyyy-MM-dd").format(new Date());
@@ -145,7 +150,15 @@ public static void returnRental(int userId, Scanner sc, dbConnect con) {
             List<Map<String,Object>> chk = con.fetchRecords("SELECT rental_id, car_id FROM tbl_rentals WHERE rental_id = ? AND u_id = ? AND is_returned = 0", rentalId, userId);
             if(chk.isEmpty()) System.out.println("❌ Rental ID not found or already returned.");
             else {
-                int carId = (int) chk.get(0).get("car_id");
+                Object carIdObj = chk.get(0).get("car_id");
+                int carId;
+                if (carIdObj instanceof Integer) {
+                    carId = (Integer) carIdObj;
+                } else if (carIdObj instanceof Long) {
+                    carId = ((Long) carIdObj).intValue();
+                } else {
+                    carId = Integer.parseInt(carIdObj.toString());
+                }
                 con.updateRecord("UPDATE tbl_rentals SET is_returned = 1 WHERE rental_id = ?", rentalId);
                 con.updateRecord("UPDATE tbl_cars SET status = 'Available' WHERE car_id = ?", carId);
                 System.out.println("✅ Rental returned. Car ID " + carId + " is now Available.");
@@ -180,7 +193,7 @@ public static void adminDeleteCar(Scanner sc, dbConnect con) {
     }
     List<Map<String,Object>> r=con.fetchRecords("SELECT car_id, status FROM tbl_cars WHERE car_id=?", carId);
     if(!r.isEmpty() && !r.get(0).get("status").toString().equalsIgnoreCase("Rented")){
-        con.updateRecord("DELETE FROM tbl_cars WHERE car_id=?", carId);
+        con.deleteRecord("DELETE FROM tbl_cars WHERE car_id=?", carId);
         System.out.println("✅ Car deleted (ID "+carId+")");
     } else System.out.println("❌ Car is rented or not found.");
 }
@@ -225,7 +238,16 @@ public static void adminDashboard(Scanner sc, dbConnect con){
 // ----------------------
 public static void main(String[] args) {
     dbConnect con = new dbConnect();
-    con.connectDB();
+    java.sql.Connection testConn = dbConnect.connectDB();
+    if (testConn == null) {
+        System.out.println("❌ Failed to connect to database. Please check your database configuration.");
+        System.exit(1);
+    }
+    try {
+        testConn.close();
+    } catch (java.sql.SQLException e) {
+        // Ignore
+    }
     Scanner sc = new Scanner(System.in);
     int choice;
     String cont;
@@ -243,7 +265,15 @@ public static void main(String[] args) {
                 List<Map<String,Object>> result=con.fetchRecords("SELECT u_id,u_name,u_status,u_type FROM tbl_users WHERE u_email=? AND u_pass=?", email,password);
                 if(result.isEmpty()){ System.out.println("❌ Invalid credentials"); break;}
                 Map<String,Object> user=result.get(0);
-                int currentUserId=(int)user.get("u_id");
+                Object userIdObj = user.get("u_id");
+                int currentUserId;
+                if (userIdObj instanceof Integer) {
+                    currentUserId = (Integer) userIdObj;
+                } else if (userIdObj instanceof Long) {
+                    currentUserId = ((Long) userIdObj).intValue();
+                } else {
+                    currentUserId = Integer.parseInt(userIdObj.toString());
+                }
                 String type=user.get("u_type").toString();
                 String status=user.get("u_status").toString();
                 if(status.equalsIgnoreCase("Pending")||status.equalsIgnoreCase("Rejected")){ System.out.println("⚠️ Account "+status); break; }
@@ -295,7 +325,6 @@ public static void main(String[] args) {
 
     System.out.println("👋 Thank you for using the Car Rental System.");
     sc.close();
-    con.closeConnection();
 }
 
 
